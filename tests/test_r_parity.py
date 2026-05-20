@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pyproda import invprobit, proda
+from pyproda import dist_approx, invprobit, pd_row_t_test, proda
 from pyproda import test_diff as run_test_diff
 
 
@@ -181,3 +181,52 @@ def test_test_diff_pval_matches_R(shared_dataset):
     mask = np.isfinite(py_p) & np.isfinite(r_p)
     r = float(np.corrcoef(py_p[mask], r_p[mask])[0, 1])
     assert r > 0.95, f"test_diff pval Pearson r={r:.4f} (need >0.95)"
+
+
+def test_pd_row_t_test_t_statistic_matches_R(shared_dataset):
+    """pd_row_t_test t-statistic should track R proDA::pd_row_t_test."""
+    M = shared_dataset["M"].to_numpy()
+    groups = shared_dataset["design"]["group"].to_numpy()
+    X = M[:, groups == "A"]
+    Y = M[:, groups == "B"]
+    res = pd_row_t_test(
+        X, Y, moderate_location=False, moderate_variance=False,
+        max_iter=10,
+    )
+    r_tt = pd.read_csv(shared_dataset["R_out"] / "pd_row_t_test.tsv", sep="\t")
+    py_t = res["t_statistic"].to_numpy()
+    r_t = r_tt["t_statistic"].to_numpy()
+    mask = np.isfinite(py_t) & np.isfinite(r_t)
+    r = float(np.corrcoef(py_t[mask], r_t[mask])[0, 1])
+    assert r > 0.99, f"pd_row_t_test t-stat Pearson r={r:.4f} (need >0.99)"
+
+
+def test_dist_approx_matches_R(shared_dataset):
+    """dist_approx between proteins should track R proDA::dist_approx."""
+    fit = proda(shared_dataset["M"], design=shared_dataset["design"]["group"].tolist(),
+                max_iter=5)
+    d = dist_approx(fit, by_sample=False)
+    py_mat = d["mean"].to_numpy()
+    r_mat = pd.read_csv(
+        shared_dataset["R_out"] / "dist_approx.tsv", sep="\t", index_col=0,
+    ).to_numpy()
+    # Compare the upper triangle (condensed distances).
+    iu = np.triu_indices_from(py_mat, k=1)
+    py_v = py_mat[iu]
+    r_v = r_mat[iu]
+    mask = np.isfinite(py_v) & np.isfinite(r_v)
+    r = float(np.corrcoef(py_v[mask], r_v[mask])[0, 1])
+    assert r > 0.95, f"dist_approx Pearson r={r:.4f} (need >0.95)"
+
+
+def test_moderate_variance_s2_matches_R(shared_dataset):
+    """With moderate_variance=True, per-protein s2 should track R."""
+    fit = proda(shared_dataset["M"], design=shared_dataset["design"]["group"].tolist(),
+                moderate_variance=True, moderate_location=False, max_iter=10)
+    r_s2 = pd.read_csv(shared_dataset["R_out"] / "s2_moderated.tsv", sep="\t")
+    py = fit.feature_parameters_().reset_index()
+    py_s2 = py["s2"].to_numpy()
+    r_s2v = r_s2["s2"].to_numpy()
+    mask = np.isfinite(py_s2) & np.isfinite(r_s2v)
+    r = float(np.corrcoef(py_s2[mask], r_s2v[mask])[0, 1])
+    assert r > 0.99, f"moderate_variance s2 Pearson r={r:.4f} (need >0.99)"

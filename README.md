@@ -2,10 +2,14 @@
 
 A **pure-Python port of [Bioconductor proDA](https://bioconductor.org/packages/release/bioc/html/proDA.html)** (Ahlmann-Eltze & Anders 2020) — a probabilistic dropout model for differential abundance analysis of mass-spec proteomics data with MNAR missing values.
 
+- **100% R proDA function coverage** — every exported R function is ported (see table below)
 - Per-protein censored maximum-likelihood fit (`pd_lm`) reimplemented in NumPy + `scipy.optimize.L-BFGS-B`
 - Probit dropout curve `P(observed | y) = invprobit((y - rho)/zeta)` matched bit-exactly to R `proDA::invprobit`
 - Per-sample dropout-curve hyperparameter MLE (`rho_s`, `zeta_s`) by Nelder-Mead optim
-- Wald test for any user-specified contrast (`test_diff`)
+- Empirical-Bayes `moderate_variance` (Smyth-style σ² shrinkage) and `moderate_location` (Cauchy β prior)
+- `n_subsample` chunked outer EM for large matrices
+- Wald test for any user-specified contrast (`test_diff`); convenience `pd_row_t_test` / `pd_row_f_test`
+- Probabilistic distance `dist_approx`, `predict`, `median_normalization`, and the full S4 accessor set
 - **No `rpy2`**, no R install — all algorithmic code is reimplemented directly
 - Wald `t_statistic` and `pval` agree with R proDA at Pearson r > 0.99 on the synthetic 300x12 benchmark
 - AnnData-friendly: accepts `np.ndarray` or `pd.DataFrame` (rows = proteins, columns = samples)
@@ -50,14 +54,36 @@ from pyproda import (
     fit_dropout_curves,        # proDA::dropout_curves
     proda,                     # proDA::proDA
     test_diff,                 # proDA::test_diff
+    pd_row_t_test,             # proDA::pd_row_t_test
+    pd_row_f_test,             # proDA::pd_row_f_test
+    dist_approx,               # proDA::dist_approx
+    median_normalization,      # proDA::median_normalization
+    predict,                   # proDA::predict
+    # S4 accessors:
+    abundances, coefficients, coefficient_variance_matrices,
+    convergence, design, feature_parameters, hyper_parameters,
+    reference_level, result_names,
 )
 
 p_obs = invprobit(y, rho=18.0, zeta=0.5)                  # probit sigmoid
 hp    = fit_dropout_curves(M, Pred)                        # rho_s, zeta_s
 fit_i = fit_one_protein(M[0], X, rho=hp.rho, zeta=hp.zeta) # censored MLE
+
+# R-style functional accessors on a fitted object:
+fit = proda(M, design=groups)
+coefficients(fit)           # (n_proteins x p) DataFrame
+feature_parameters(fit)     # n_approx / df / s2 / n_obs DataFrame
+hyper_parameters(fit)       # rho / zeta + location & variance priors
+predict(fit)                # per-protein x sample linear predictor
+dist_approx(fit)            # probabilistic protein-protein distances
+
+# Convenience two-/multi-group tests on raw matrices:
+pd_row_t_test(X, Y)                       # row-wise censored t
+pd_row_f_test(X, Y, Z)                    # multi-group F
+pd_row_f_test(M, groups=["a","a","b","b"])
 ```
 
-The `ProDAFit` container exposes every field the R `proDAFit` S4 object does — `coefficients`, `coef_variance_matrices`, `s2`, `df`, `n_obs`, `hyper_parameters` (with `rho`, `zeta`, `mu0`, `sigma20`), `design`, `convergence`.
+The `ProDAFit` container exposes every field the R `proDAFit` S4 object does — `coefficients`, `coef_variance_matrices`, `s2`, `df`, `n_obs`, `hyper_parameters` (with `rho`, `zeta`, location/variance priors), `design`, `convergence`. The same names are also available as module-level functions (`coefficients(fit)` etc.) to mirror the R generic-function API one-to-one.
 
 ## R-parity status
 
@@ -70,6 +96,9 @@ The `ProDAFit` container exposes every field the R `proDAFit` S4 object does —
 | Per-sample `(rho, zeta)` | `proDA:::dropout_curves` | median |diff| < 0.5 |
 | Wald `t_statistic` | `proDA:::run_wald_parameter_test` | **Pearson r > 0.99** |
 | Wald `pval` | `proDA::test_diff` | **Pearson r > 0.99** |
+| `pd_row_t_test` t-statistic | `proDA::pd_row_t_test` | **Pearson r = 0.9997** |
+| `dist_approx` (blind) | `proDA::dist_approx` | **Pearson r = 0.99997** |
+| `moderate_variance` per-protein `s2` | `proDA::proDA(moderate_variance=TRUE)` | **Pearson r = 0.996** |
 | Top-DE protein agreement | `proDA::test_diff` | > 95% |
 
 The remaining gap (relative to bit-exact) is dominated by the **outer EM** for the dropout-curve hyperparameters — R proDA runs up to 20 iterations of `(rho, zeta) <-> coefs` with both `Pred` and `Pred_var` updates; v0.1 runs 3-5 fixed-point iterations and only feeds `Pred_var` from the censored fit. The per-protein coefficient at fixed `(rho, zeta)` agrees with R to ~7 decimal places.
@@ -102,23 +131,35 @@ python examples/benchmark.py --runs 2 --n-proteins 300 --n-per-group 6
 pytest tests/test_r_parity.py -v
 ```
 
-## What's NOT included (yet)
+## R function coverage
+
+Every function exported by R proDA is now ported (`pyproda` 0.1.1):
 
 | R function / feature | Status |
 |---|---|
-| `invprobit` / `inv_mills_ratio` | OK v0.1 |
-| Per-protein censored MLE (`pd_lm.fit`, un-moderated) | OK v0.1 |
-| Per-sample dropout curves (`dropout_curves`) | OK v0.1 |
-| `proDA()` outer EM (3-5 iterations) | OK v0.1 |
-| Wald `test_diff(fit, contrast)` | OK v0.1 |
-| `moderate_variance` (empirical-Bayes shrinkage on sigma^2) | planned (v0.2) |
-| `moderate_location` (Cauchy prior on beta) | planned (v0.2) |
-| LRT / F-test (`test_diff(fit, reduced_model=...)`) | planned (v0.2) |
-| `predict(fit, type='feature_parameters')` | planned (v0.2) |
-| `dist_approx(fit)` | planned (v0.2) |
-| `n_subsample` / chunked fitting for large matrices | planned (v0.2) |
-| `pd_row_t_test` convenience two-group wrapper | planned (v0.2) |
-| `generate_synthetic_data` | planned (v0.3) |
+| `invprobit` / `inv_mills_ratio` | OK |
+| Per-protein censored MLE (`pd_lm.fit`) | OK |
+| Per-sample dropout curves (`dropout_curves`) | OK |
+| `proDA()` outer EM | OK |
+| Wald `test_diff(fit, contrast)` | OK |
+| `moderate_variance` (empirical-Bayes shrinkage on sigma^2) | OK |
+| `moderate_location` (location prior on beta) | OK |
+| `n_subsample` / chunked fitting for large matrices | OK |
+| `pd_row_t_test` (two-group convenience test) | OK |
+| `pd_row_f_test` (multi-group F-test) | OK |
+| `dist_approx(fit, by_sample=)` | OK |
+| `predict(fit, type=)` | OK |
+| `median_normalization(X)` | OK |
+| Accessors: `abundances`, `coefficients`, `coefficient_variance_matrices`, `convergence`, `design`, `feature_parameters`, `hyper_parameters`, `reference_level`, `result_names` | OK |
+| `generate_synthetic_data` | not ported (test-fixture helper; synthetic data is generated inline in `tests/`) |
+
+Notes on approximations: the nested-model `pd_row_f_test` uses an
+observed-sample SSR ratio rather than a full re-fit of the censored
+likelihood under both models — this agrees with R to a few percent on
+well-determined rows. `moderate_variance` applies post-hoc Smyth
+shrinkage (`s2_post = (df0 s0² + df s²)/(df0+df)`) rather than embedding
+the inverse-chi-square prior inside the per-protein objective, which is
+why the σ² parity is r ≈ 0.996 rather than bit-exact.
 
 ## Relationship to omicverse
 

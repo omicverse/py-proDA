@@ -78,4 +78,34 @@ write.table(res, file.path(out_dir, "test_diff.tsv"),
 write.table(data.frame(proda_fit = t1 - t0, test_diff = t3 - t2),
             file.path(out_dir, "timing.tsv"),
             sep = "\t", quote = FALSE, row.names = FALSE)
+
+# 4) pd_row_t_test reference (un-moderated, to compare t-statistic).
+n1 <- sum(group_vec == levels(factor(group_vec))[1])
+Xmat <- M[, group_vec == levels(factor(group_vec))[1], drop = FALSE]
+Ymat <- M[, group_vec == levels(factor(group_vec))[2], drop = FALSE]
+tt <- proDA::pd_row_t_test(Xmat, Ymat,
+                           moderate_location = FALSE,
+                           moderate_variance = FALSE)
+write.table(data.frame(name = tt$name, t_statistic = tt$t_statistic,
+                       pval = tt$pval, diff = tt$diff),
+            file.path(out_dir, "pd_row_t_test.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+# 5) moderate_variance reference — per-protein s2 with EB shrinkage on.
+fit_mod <- proDA(M, design = design_mat,
+                 moderate_location = FALSE,
+                 moderate_variance = TRUE,
+                 verbose = FALSE)
+feat_mod <- feature_parameters(fit_mod)
+write.table(data.frame(name = rownames(coefficients(fit_mod)),
+                       s2 = feat_mod$s2, df = feat_mod$df),
+            file.path(out_dir, "s2_moderated.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+# 6) dist_approx reference (between proteins, blinded model).
+da <- proDA::dist_approx(fit, by_sample = FALSE)
+dm <- as.matrix(da$mean)
+write.table(dm, file.path(out_dir, "dist_approx.tsv"),
+            sep = "\t", quote = FALSE, col.names = NA)
+
 cat("R proDA pipeline done\n")
