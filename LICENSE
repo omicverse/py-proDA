@@ -1,0 +1,8 @@
+GPL-3.0 — GNU General Public License v3.
+
+This Python port is released under the same GPL-3 license as the
+original Bioconductor proDA package
+(https://bioconductor.org/packages/release/bioc/html/proDA.html,
+by Constantin Ahlmann-Eltze & Simon Anders). The full GPL-3 text
+is reproduced from https://www.gnu.org/licenses/gpl-3.0.txt and
+applies to all files in this repository.

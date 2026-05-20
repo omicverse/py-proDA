@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyproda"
+version = "0.1.0"
+description = "Pure-Python port of Bioconductor proDA — probabilistic dropout model for mass-spec proteomics differential abundance testing."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Zehua Zeng", email = "starlitnightly@163.com" },
+]
+keywords = [
+    "proteomics", "differential-expression",
+    "probabilistic-dropout", "MNAR", "missing-values",
+    "LC-MS/MS", "label-free", "proDA",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.10",
+    "pandas>=1.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov", "ruff"]
+plotting = ["matplotlib>=3.6"]
+
+[project.urls]
+Homepage = "https://github.com/omicverse/py-proDA"
+Repository = "https://github.com/omicverse/py-proDA"
+Issues = "https://github.com/omicverse/py-proDA/issues"
+"Upstream Bioc package" = "https://bioconductor.org/packages/release/bioc/html/proDA.html"
+"Upstream (omicverse)" = "https://github.com/Starlitnightly/omicverse"
+
+[tool.setuptools.packages.find]
+include = ["pyproda*"]
+exclude = ["tests*", "examples*", "proDA-ref*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+    "ignore::RuntimeWarning",
+]
